@@ -1,5 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { CommonModule } from '@angular/common';
+import { MatCardModule } from '@angular/material/card';
 
 interface Stats {
     daily: number;
@@ -9,6 +11,7 @@ interface Stats {
 
 @Component({
     selector: 'app-stats',
+    imports: [CommonModule, MatCardModule],
     templateUrl: './stats.component.html',
     styleUrls: ['./stats.component.scss']
 })
