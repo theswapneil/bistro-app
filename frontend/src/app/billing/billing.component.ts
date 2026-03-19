@@ -1,0 +1,31 @@
+import { Component, OnInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { FormBuilder, FormGroup } from '@angular/forms';
+
+interface Bill {
+    id: number;
+    table_number: number;
+    items: { name: string; qty: number; price: number; }[];
+    total: number;
+}
+
+@Component({
+    selector: 'app-billing',
+    templateUrl: './billing.component.html',
+    styleUrls: ['./billing.component.scss']
+})
+export class BillingComponent implements OnInit {
+    billForm: FormGroup;
+    bill: Bill | null = null;
+    constructor(private http: HttpClient, private fb: FormBuilder) {
+        this.billForm = this.fb.group({
+            table_number: ['']
+        });
+    }
+    ngOnInit() { }
+    generateBill() {
+        this.http.post<Bill>('http://localhost:3001/api/bill', this.billForm.value, {
+            headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
+        }).subscribe(bill => this.bill = bill);
+    }
+}

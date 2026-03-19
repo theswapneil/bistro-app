@@ -1,0 +1,44 @@
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    align-items: center;
+    margin-top: 2rem;
+}
+
+.table-grid {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.table-card {
+    width: 100px;
+    height: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    background: #eee;
+    cursor: pointer;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table-card.available {
+    background: #c8e6c9;
+}
+
+.table-card.occupied {
+    background: #ffcdd2;
+}
+
+.status {
+    font-size: 0.9em;
+    margin-top: 0.5em;
+}
+
+.full-width {
+    width: 100%;
+}

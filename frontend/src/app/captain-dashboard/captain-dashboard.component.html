@@ -1,0 +1,25 @@
+<div class="dashboard-container">
+    <mat-card>
+        <h2>Table Dashboard</h2>
+        <div class="table-grid">
+            <div *ngFor="let table of tables" class="table-card" [ngClass]="table.status" (click)="selectTable(table)">
+                Table {{ table.table_number }}
+                <span class="status">{{ table.status }}</span>
+            </div>
+        </div>
+    </mat-card>
+    <mat-card *ngIf="selectedTable">
+        <h3>Order for Table {{ selectedTable.table_number }}</h3>
+        <form [formGroup]="orderForm" (ngSubmit)="placeOrder()">
+            <mat-form-field class="full-width">
+                <mat-label>Item ID</mat-label>
+                <input matInput formControlName="item_id" required />
+            </mat-form-field>
+            <mat-form-field class="full-width">
+                <mat-label>Quantity</mat-label>
+                <input matInput type="number" formControlName="quantity" required />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit">Add/Update Order</button>
+        </form>
+    </mat-card>
+</div>

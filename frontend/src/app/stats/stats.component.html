@@ -1,0 +1,14 @@
+<div class="stats-container">
+    <mat-card class="stat-card">
+        <h3>Daily Collection</h3>
+        <div class="stat-value">{{ stats.daily | currency }}</div>
+    </mat-card>
+    <mat-card class="stat-card">
+        <h3>Monthly Collection</h3>
+        <div class="stat-value">{{ stats.monthly | currency }}</div>
+    </mat-card>
+    <mat-card class="stat-card">
+        <h3>Expenses</h3>
+        <div class="stat-value">{{ stats.expenses | currency }}</div>
+    </mat-card>
+</div>

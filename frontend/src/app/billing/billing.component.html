@@ -1,0 +1,19 @@
+<div class="billing-container">
+    <mat-card>
+        <h2>Generate Bill</h2>
+        <form [formGroup]="billForm" (ngSubmit)="generateBill()">
+            <mat-form-field class="full-width">
+                <mat-label>Table Number</mat-label>
+                <input matInput formControlName="table_number" required />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit">Generate</button>
+        </form>
+    </mat-card>
+    <mat-card *ngIf="bill">
+        <h3>Bill for Table {{ bill.table_number }}</h3>
+        <div *ngFor="let item of bill.items">
+            {{ item.name }} x{{ item.qty }} - {{ item.price | currency }}
+        </div>
+        <div class="total">Total: {{ bill.total | currency }}</div>
+    </mat-card>
+</div>

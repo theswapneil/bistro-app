@@ -1,0 +1,22 @@
+.billing-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    align-items: center;
+    margin-top: 2rem;
+}
+
+mat-card {
+    width: 400px;
+    padding: 2rem;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.total {
+    font-weight: bold;
+    margin-top: 1rem;
+    font-size: 1.2em;
+}
