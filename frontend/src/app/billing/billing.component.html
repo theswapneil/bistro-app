@@ -1,6 +1,7 @@
 <div class="billing-container">
     <mat-card>
         <h2>Generate Bill</h2>
+        <div *ngIf="error" class="error">{{ error }}</div>
         <form [formGroup]="billForm" (ngSubmit)="generateBill()">
             <mat-form-field class="full-width">
                 <mat-label>Table Number</mat-label>

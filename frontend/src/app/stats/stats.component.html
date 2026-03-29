@@ -1,4 +1,5 @@
 <div class="stats-container">
+    <div *ngIf="error" class="error">{{ error }}</div>
     <mat-card class="stat-card">
         <h3>Daily Collection</h3>
         <div class="stat-value">{{ stats.daily | currency }}</div>

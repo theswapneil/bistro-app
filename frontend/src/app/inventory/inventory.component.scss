@@ -18,3 +18,11 @@ mat-card {
 table {
     width: 100%;
 }
+
+.mat-column-actions {
+    white-space: nowrap;
+
+    button.mdc-button {
+        margin-right: 8px !important;
+    }
+}

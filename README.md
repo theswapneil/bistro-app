@@ -1,3 +1,18 @@
+# 1. Import the schema into MySQL
+mysql -u root -p < db/init.sql
+
+# 2. Seed users with real bcrypt passwords
+cd backend
+node seed.js
+# Creates: admin/admin123  and  captain/captain123
+
+# 3. Start the backend (from backend/ or root)
+node backend/index.js
+
+# 4. Start the frontend (from frontend/)
+cd frontend
+npx ng serve
+
 # Frontend
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.3.

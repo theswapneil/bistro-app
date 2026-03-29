@@ -1,13 +1,8 @@
 import { Component, OnInit } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
-
-interface Stats {
-    daily: number;
-    monthly: number;
-    expenses: number;
-}
+import { ApiService } from '../api.service';
+import { Stats } from '../models';
 
 @Component({
     selector: 'app-stats',
@@ -17,10 +12,13 @@ interface Stats {
 })
 export class StatsComponent implements OnInit {
     stats: Stats = { daily: 0, monthly: 0, expenses: 0 };
-    constructor(private http: HttpClient) { }
+    error = '';
+    constructor(private api: ApiService) { }
     ngOnInit() {
-        this.http.get<Stats>('http://localhost:3001/api/statistics', {
-            headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
-        }).subscribe(stats => this.stats = stats);
+        this.error = '';
+        this.api.getStats().subscribe({
+            next: stats => this.stats = stats,
+            error: err => this.error = err.message || 'Unable to load statistics'
+        });
     }
 }

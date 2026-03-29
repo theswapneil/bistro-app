@@ -1,11 +1,12 @@
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { Router } from '@angular/router';
+import { ApiService } from '../api.service';
 
 @Component({
     selector: 'app-login',
@@ -17,7 +18,7 @@ export class LoginComponent {
     loginForm: FormGroup;
     error: string = '';
 
-    constructor(private fb: FormBuilder, private http: HttpClient) {
+    constructor(private fb: FormBuilder, private api: ApiService, private router: Router) {
         this.loginForm = this.fb.group({
             username: ['', Validators.required],
             password: ['', Validators.required]
@@ -26,19 +27,17 @@ export class LoginComponent {
 
     onSubmit() {
         if (this.loginForm.valid) {
-            this.http.post<any>('http://localhost:3001/api/login', this.loginForm.value).subscribe({
-                next: (res) => {
-                    localStorage.setItem('token', res.token);
-                    localStorage.setItem('role', res.role);
-                    // Redirect based on role
+            this.error = '';
+            this.api.login(this.loginForm.value).subscribe({
+                next: res => {
                     if (res.role === 'admin') {
-                        window.location.href = '/admin';
+                        this.router.navigate(['/admin/inventory']);
                     } else {
-                        window.location.href = '/captain';
+                        this.router.navigate(['/captain/dashboard']);
                     }
                 },
-                error: (err) => {
-                    this.error = err.error.message || 'Login failed';
+                error: err => {
+                    this.error = err.message || 'Login failed';
                 }
             });
         }

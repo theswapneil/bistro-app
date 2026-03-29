@@ -1,74 +1,68 @@
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTableModule } from '@angular/material/table';
-
-interface InventoryItem {
-    id: number;
-    item_name: string;
-    quantity: number;
-    price: number;
-}
+import { InventoryDialogComponent } from './inventory-dialog.component';
+import { ApiService } from '../api.service';
+import { InventoryItem } from '../models';
 
 @Component({
     selector: 'app-inventory',
-    imports: [CommonModule, ReactiveFormsModule, MatCardModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatTableModule],
+    imports: [CommonModule, MatCardModule, MatDialogModule, MatButtonModule, MatTableModule],
     templateUrl: './inventory.component.html',
     styleUrls: ['./inventory.component.scss']
 })
 export class InventoryComponent implements OnInit {
-    items: InventoryItem[] = [];
-    form: FormGroup;
-    editing: InventoryItem | null = null;
+    items = signal<InventoryItem[]>([]);
+    error = '';
 
-    constructor(private http: HttpClient, private fb: FormBuilder) {
-        this.form = this.fb.group({
-            item_name: [''],
-            quantity: [0],
-            price: [0]
-        });
-    }
+    constructor(private api: ApiService, private dialog: MatDialog) { }
 
     ngOnInit() {
         this.load();
     }
 
     load() {
-        this.http.get<InventoryItem[]>('http://localhost:3001/api/inventory', {
-            headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
-        }).subscribe(items => this.items = items);
+        this.error = '';
+        this.api.getInventory().subscribe({
+            next: items => this.items.set(items),
+            error: err => this.error = err.message || 'Unable to load inventory'
+        });
     }
 
-    save() {
-        if (this.editing) {
-            this.http.put('http://localhost:3001/api/inventory/' + this.editing.id, this.form.value, {
-                headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
-            }).subscribe(() => { this.editing = null; this.form.reset(); this.load(); });
-        } else {
-            this.http.post('http://localhost:3001/api/inventory', this.form.value, {
-                headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
-            }).subscribe(() => { this.form.reset(); this.load(); });
-        }
-    }
+    openForm(item?: InventoryItem) {
+        const dialogRef = this.dialog.open(InventoryDialogComponent, {
+            width: '420px',
+            data: { item }
+        });
 
-    edit(item: InventoryItem) {
-        this.editing = item;
-        this.form.patchValue(item);
+        dialogRef.afterClosed().subscribe(result => {
+            if (!result) {
+                return;
+            }
+
+            this.error = '';
+            if (item) {
+                this.api.updateInventory(item.id, result).subscribe({
+                    next: () => this.load(),
+                    error: err => this.error = err.message || 'Failed to update item'
+                });
+            } else {
+                this.api.createInventory(result).subscribe({
+                    next: () => this.load(),
+                    error: err => this.error = err.message || 'Failed to add item'
+                });
+            }
+        });
     }
 
     delete(item: InventoryItem) {
-        this.http.delete('http://localhost:3001/api/inventory/' + item.id, {
-            headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }
-        }).subscribe(() => this.load());
-    }
-
-    cancel() {
-        this.editing = null;
-        this.form.reset();
+        this.error = '';
+        this.api.deleteInventory(item.id).subscribe({
+            next: () => this.load(),
+            error: err => this.error = err.message || 'Failed to delete item'
+        });
     }
 }
