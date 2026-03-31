@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { ApiService } from '../api.service';
-import { Table } from '../models';
+import { InventoryItem, Table } from '../models';
 
 @Component({
     selector: 'app-captain-dashboard',
@@ -23,6 +23,7 @@ export class CaptainDashboardComponent implements OnInit {
     selectedTable: Table | null = null;
     orderForm: FormGroup;
     error = '';
+    items = signal<InventoryItem[]>([]);
 
     constructor(private api: ApiService, private fb: FormBuilder) {
         this.orderForm = this.fb.group({
@@ -33,6 +34,14 @@ export class CaptainDashboardComponent implements OnInit {
 
     ngOnInit() {
         this.loadTables();
+        this.loadItems();
+    }
+
+    loadItems() {
+        this.api.getInventory().subscribe({
+            next: items => this.items.set(items),
+            error: err => this.error = err.message || 'Unable to load inventory'
+        });
     }
 
     loadTables() {

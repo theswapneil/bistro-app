@@ -35,7 +35,7 @@ export class InventoryComponent implements OnInit {
     openForm(item?: InventoryItem) {
         const dialogRef = this.dialog.open(InventoryDialogComponent, {
             width: '420px',
-            data: { item }
+            data: { item, list: this.items() }
         });
 
         dialogRef.afterClosed().subscribe(result => {
@@ -44,8 +44,8 @@ export class InventoryComponent implements OnInit {
             }
 
             this.error = '';
-            if (item) {
-                this.api.updateInventory(item.id, result).subscribe({
+            if (item || result?.id) {
+                this.api.updateInventory(item?.id ?? result?.id, result).subscribe({
                     next: () => this.load(),
                     error: err => this.error = err.message || 'Failed to update item'
                 });
@@ -59,10 +59,20 @@ export class InventoryComponent implements OnInit {
     }
 
     delete(item: InventoryItem) {
-        this.error = '';
-        this.api.deleteInventory(item.id).subscribe({
-            next: () => this.load(),
-            error: err => this.error = err.message || 'Failed to delete item'
+        const dialogRef = this.dialog.open(InventoryDialogComponent, {
+            width: '420px',
+            data: { item, isDelete: true }
+        });
+
+        dialogRef.afterClosed().subscribe(result => {
+            if (!result) {
+                return;
+            }
+            this.error = '';
+            this.api.deleteInventory(item.id).subscribe({
+                next: () => this.load(),
+                error: err => this.error = err.message || 'Failed to delete item'
+            });
         });
     }
 }
