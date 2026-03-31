@@ -8,6 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { InventoryItem } from '../models';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { map, Observable, startWith } from 'rxjs';
+import { nameExistsValidator } from '../name-exists.validator';
 
 export interface InventoryDialogData {
     isDelete?: boolean;
@@ -23,7 +24,7 @@ export interface InventoryDialogData {
 })
 export class InventoryDialogComponent {
     form: FormGroup;
-    title = this.data?.isDelete ? 'Delete Inventory Item' : (this.data?.item ? 'Edit Inventory Item' : 'Add Inventory Item');
+    title = this.data?.isDelete ? 'Delete Inventory Item' : (this.data?.item ? 'Add Stock' : 'Add Inventory Item');
     filteredOptions!: Observable<InventoryItem[]>;
 
     constructor(
@@ -33,44 +34,15 @@ export class InventoryDialogComponent {
     ) {
         this.form = this.fb.group({
             id: [data?.item?.id ?? null],
-            item_name: [data?.item?.item_name ?? '', Validators.required],
-            quantity: [data?.item?.quantity ?? 0, [Validators.required, Validators.min(0)]],
-            price: [data?.item?.price ?? 0, [Validators.required, Validators.min(0)]],
+            name: [data?.item?.name ?? '', [Validators.required, nameExistsValidator(data.list)]],
+            quantity: [0, [Validators.required, Validators.min(1)]],
+            price: [data?.item?.price ?? 0, [Validators.required, Validators.min(1)]],
         });
-        this.filteredOptions = this.form.get('item_name')!.valueChanges.pipe(
-            // startWith(''),
-            map(value => {
-                const filterValue = this._filter(value || '');
-                console.log('filteredOptions function', value, this.data?.list, filterValue)
-
-                return filterValue
-            })
-        );
-    }
-
-    private _filter(value: string | InventoryItem): InventoryItem[] {
-        console.log('filter function', value);
-        const filterValue = typeof value === 'string' ? value?.toLowerCase() : value?.item_name;
-        return this.data?.list?.filter(option =>
-            option.item_name.toLowerCase().includes(filterValue)
-        );
-    }
-
-    onOptionSelected(event: MatAutocompleteSelectedEvent) {
-        console.log('onOptionSelected function', event.option, event.option.value)
-
-        const selectedItem = event.option.value as InventoryItem;
-        this.form.patchValue({
-            id: selectedItem.id,
-            item_name: selectedItem.item_name,
-            quantity: selectedItem.quantity,
-            price: selectedItem.price
-        });
-    }
-
-    displayFn(item: InventoryItem): string {
-        console.log('Disaply function', item, item.item_name)
-        return item && item.item_name ? item.item_name : '';
+        if (data?.item?.id) {
+            this.form.get('name')?.clearValidators();
+            this.form.get('price')?.disable();
+            this.form.get('name').addValidators([Validators.required, nameExistsValidator(data.list, data?.item?.name)]);
+        }
     }
 
     save() {
@@ -78,7 +50,7 @@ export class InventoryDialogComponent {
             this.dialogRef.close(true);
         }
         if (this.form.valid) {
-            this.dialogRef.close(this.form.value);
+            this.dialogRef.close(this.form.getRawValue());
         }
     }
 

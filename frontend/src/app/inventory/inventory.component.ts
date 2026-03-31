@@ -44,8 +44,8 @@ export class InventoryComponent implements OnInit {
             }
 
             this.error = '';
-            if (item || result?.id) {
-                this.api.updateInventory(item?.id ?? result?.id, result).subscribe({
+            if (item) {
+                this.api.addStock(item?.id, result).subscribe({
                     next: () => this.load(),
                     error: err => this.error = err.message || 'Failed to update item'
                 });

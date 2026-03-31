@@ -1,24 +1,31 @@
--- MySQL script to create tables and pre-populate demo data for Bar & Restaurant Billing App
--- Run this file first, then run: node backend/seed.js  (to create admin/captain users with real bcrypt hashes)
-
-CREATE DATABASE IF NOT EXISTS bar_restaurant;
 USE bar_restaurant;
 
--- Users table
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'captain') NOT NULL
-);
+-- WARNING: Run this migration only on the old schema BEFORE switching the app.
+-- It migrates old inventory/orders data into the new items/inventory_transactions/order_lines schema.
 
--- Suppliers table
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Rename legacy tables so we can create new schema.
+DROP TABLE IF EXISTS inventory_backup;
+RENAME TABLE inventory TO inventory_backup;
+
+DROP TABLE IF EXISTS orders_backup;
+RENAME TABLE orders TO orders_backup;
+
+DROP TABLE IF EXISTS bills_backup;
+RENAME TABLE bills TO bills_backup;
+
+DROP TABLE IF EXISTS bill_items_backup;
+RENAME TABLE bill_items TO bill_items_backup;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- Create new schema tables if they do not exist.
 CREATE TABLE IF NOT EXISTS suppliers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL
 );
 
--- Items table
 CREATE TABLE IF NOT EXISTS items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -30,7 +37,6 @@ CREATE TABLE IF NOT EXISTS items (
     FOREIGN KEY (modified_by_id) REFERENCES users(id)
 );
 
--- Inventory transactions table
 CREATE TABLE IF NOT EXISTS inventory_transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     item_id INT NOT NULL,
@@ -49,36 +55,6 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
     FOREIGN KEY (modified_by_id) REFERENCES users(id)
 );
 
--- Sample inventory items
-INSERT IGNORE INTO items (name, created_by_id, modified_by_id) VALUES
-('Beer', NULL, NULL),
-('Wine', NULL, NULL),
-('Burger', NULL, NULL),
-('Whiskey', NULL, NULL),
-('Soft Drink', NULL, NULL);
-
-INSERT IGNORE INTO inventory_transactions (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id) VALUES
-((SELECT id FROM items WHERE name = 'Beer'), 'purchase', 100, 3.50, 3.50, NULL, NULL, NULL),
-((SELECT id FROM items WHERE name = 'Wine'), 'purchase', 50, 5.00, 5.00, NULL, NULL, NULL),
-((SELECT id FROM items WHERE name = 'Burger'), 'purchase', 40, 7.00, 7.00, NULL, NULL, NULL),
-((SELECT id FROM items WHERE name = 'Whiskey'), 'purchase', 30, 8.00, 8.00, NULL, NULL, NULL),
-((SELECT id FROM items WHERE name = 'Soft Drink'), 'purchase', 80, 2.00, 2.00, NULL, NULL, NULL);
-
--- Tables table
-CREATE TABLE IF NOT EXISTS tables (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    table_number INT NOT NULL UNIQUE,
-    status ENUM('available', 'occupied') NOT NULL DEFAULT 'available'
-);
-
-INSERT IGNORE INTO tables (table_number, status) VALUES
-(1, 'available'),
-(2, 'available'),
-(3, 'available'),
-(4, 'available'),
-(5, 'available');
-
--- Orders table
 CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     table_id INT,
@@ -95,7 +71,6 @@ CREATE TABLE IF NOT EXISTS orders (
     FOREIGN KEY (modified_by_id) REFERENCES users(id)
 );
 
--- Order lines table
 CREATE TABLE IF NOT EXISTS order_lines (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id INT NOT NULL,
@@ -112,7 +87,6 @@ CREATE TABLE IF NOT EXISTS order_lines (
     FOREIGN KEY (modified_by_id) REFERENCES users(id)
 );
 
--- Bills table
 CREATE TABLE IF NOT EXISTS bills (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id INT NOT NULL,
@@ -130,3 +104,28 @@ CREATE TABLE IF NOT EXISTS bills (
     FOREIGN KEY (created_by_id) REFERENCES users(id),
     FOREIGN KEY (modified_by_id) REFERENCES users(id)
 );
+
+-- Migrate inventory rows into items and inventory_transactions.
+INSERT INTO items (name, created_by_id, modified_by_id)
+SELECT DISTINCT item_name, NULL, NULL
+FROM inventory_backup;
+
+INSERT INTO inventory_transactions (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+SELECT i.id, 'purchase', inv.quantity, inv.price, inv.price, NULL, NULL, NULL
+FROM inventory_backup inv
+JOIN items i ON i.name = inv.item_name;
+
+-- Migrate old orders into new orders/order_lines.
+INSERT INTO orders (id, table_id, user_id, order_time, status, created_on, modified_on, created_by_id, modified_by_id)
+SELECT id, table_id, NULL, NOW(), status, NOW(), NOW(), NULL, NULL
+FROM orders_backup;
+
+INSERT INTO order_lines (order_id, item_id, quantity, price, created_by_id, modified_by_id)
+SELECT o.id, o.item_id, o.quantity,
+       COALESCE((SELECT selling_price FROM inventory_transactions it WHERE it.item_id = o.item_id ORDER BY modified_on DESC LIMIT 1), 0),
+       NULL, NULL
+FROM orders_backup o;
+
+-- Keep old bills and bill items as backups if needed; no automatic billing migration is performed.
+
+SELECT 'Migration complete. Legacy tables renamed to *_backup.' AS message;

@@ -9,9 +9,9 @@
     <mat-card>
         <h3>Inventory List</h3>
         <table mat-table [dataSource]="items()" class="mat-elevation-z8 full-width">
-            <ng-container matColumnDef="item_name">
+            <ng-container matColumnDef="name">
                 <th mat-header-cell *matHeaderCellDef>Item</th>
-                <td mat-cell *matCellDef="let item">{{ item.item_name }}</td>
+                <td mat-cell *matCellDef="let item">{{ item.name }}</td>
             </ng-container>
             <ng-container matColumnDef="quantity">
                 <th mat-header-cell *matHeaderCellDef>Qty</th>
@@ -24,12 +24,12 @@
             <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef>Actions</th>
                 <td mat-cell *matCellDef="let item">
-                    <button mat-raised-button color="primary" (click)="openForm(item)">Edit</button>
+                    <button mat-raised-button color="primary" (click)="openForm(item)">Add stock</button>
                     <button mat-raised-button color="warn" (click)="delete(item)">Delete</button>
                 </td>
             </ng-container>
-            <tr mat-header-row *matHeaderRowDef="['item_name', 'quantity', 'price', 'actions']"></tr>
-            <tr mat-row *matRowDef="let row; columns: ['item_name', 'quantity', 'price', 'actions'];"></tr>
+            <tr mat-header-row *matHeaderRowDef="['name', 'quantity', 'price', 'actions']"></tr>
+            <tr mat-row *matRowDef="let row; columns: ['name', 'quantity', 'price', 'actions'];"></tr>
         </table>
     </mat-card>
 </div>

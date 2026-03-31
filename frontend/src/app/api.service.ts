@@ -59,6 +59,12 @@ export class ApiService {
         );
     }
 
+    addStock(id: number, item: Omit<InventoryItem, 'id'>) {
+        return this.http.put<InventoryItem>(`${this.baseUrl}/add-stock/${id}`, item, this.getAuthHeaders()).pipe(
+            catchError(err => this.handleError(err))
+        );
+    }
+
     deleteInventory(id: number) {
         return this.http.delete<void>(`${this.baseUrl}/inventory/${id}`, this.getAuthHeaders()).pipe(
             catchError(err => this.handleError(err))

@@ -65,7 +65,26 @@ function authorize(roles = []) {
 
 app.get('/api/inventory', authorize(['admin']), async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM inventory ORDER BY item_name');
+        const [rows] = await db.query(
+            `SELECT
+                i.id,
+                i.name,
+                COALESCE(SUM(
+                    CASE
+                        WHEN it.transaction_type IN ('purchase', 'return') THEN it.quantity
+                        WHEN it.transaction_type = 'sale' THEN -it.quantity
+                        ELSE it.quantity
+                    END
+                ), 0) AS quantity,
+                COALESCE(
+                    (SELECT it2.buying_price FROM inventory_transactions it2 WHERE it2.item_id = i.id ORDER BY it2.modified_on DESC LIMIT 1),
+                    0
+                ) AS price
+            FROM items i
+            LEFT JOIN inventory_transactions it ON it.item_id = i.id
+            GROUP BY i.id, i.name
+            ORDER BY i.name`
+        );
         res.json(rows);
     } catch (err) {
         console.error(err);
@@ -75,23 +94,103 @@ app.get('/api/inventory', authorize(['admin']), async (req, res) => {
 
 app.post('/api/inventory', authorize(['admin']), async (req, res) => {
     try {
-        const { item_name, quantity, price } = req.body;
-        if (!item_name || quantity == null || price == null) {
-            return res.status(400).json({ message: 'item_name, quantity and price are required' });
+        const { name, quantity, price } = req.body;
+        if (!name || quantity == null || price == null) {
+            return res.status(400).json({ message: 'name, quantity and price are required' });
         }
-        await db.query('INSERT INTO inventory (item_name, quantity, price) VALUES (?, ?, ?)', [item_name, quantity, price]);
-        res.json({ message: 'Item added' });
+
+        const [existingItems] = await db.query('SELECT id FROM items WHERE name = ?', [name]);
+        let itemId;
+
+        if (existingItems.length) {
+            itemId = existingItems[0].id;
+        } else {
+            const [result] = await db.query(
+                'INSERT INTO items (name, created_by_id, modified_by_id) VALUES (?, ?, ?)',
+                [name, req.user.id, req.user.id]
+            );
+            itemId = result.insertId;
+        }
+
+        if (quantity !== 0) {
+            const transactionType = quantity > 0 ? 'purchase' : 'sale';
+            await db.query(
+                `INSERT INTO inventory_transactions
+                    (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [itemId, transactionType, Math.abs(quantity), price, price, null, req.user.id, req.user.id]
+            );
+        }
+
+        res.json({ id: itemId, name, quantity, price });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-app.put('/api/inventory/:id', authorize(['admin']), async (req, res) => {
+app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
     try {
-        const { item_name, quantity, price } = req.body;
-        await db.query('UPDATE inventory SET item_name = ?, quantity = ?, price = ? WHERE id = ?',
-            [item_name, quantity, price, req.params.id]);
+        const { name, quantity, price } = req.body;
+        if (!name || quantity == null || price == null) {
+            return res.status(400).json({ message: 'name, quantity and price are required' });
+        }
+
+        const [items] = await db.query('SELECT * FROM items WHERE id = ?', [req.params.id]);
+        if (!items.length) {
+            return res.status(404).json({ message: 'Item not found' });
+        }
+
+        if (items[0].name !== name) {
+            await db.query('UPDATE items SET name = ?, modified_by_id = ? WHERE id = ?', [name, req.user.id, req.params.id]);
+        }
+
+        // const [[stockRow]] = await db.query(
+        //     `SELECT COALESCE(SUM(
+        //         CASE
+        //             WHEN transaction_type IN ('purchase', 'return') THEN quantity
+        //             WHEN transaction_type = 'sale' THEN -quantity
+        //             ELSE quantity
+        //         END
+        //     ), 0) AS quantity
+        //      FROM inventory_transactions
+        //      WHERE item_id = ?`,
+        //     [req.params.id]
+        // );
+
+        // const currentQuantity = stockRow.quantity || 0;
+        // const quantityDelta = quantity - currentQuantity;
+
+        const [[priceRow]] = await db.query(
+            'SELECT selling_price FROM inventory_transactions WHERE item_id = ? ORDER BY modified_on DESC LIMIT 1',
+            [req.params.id]
+        );
+        const currentPrice = priceRow?.selling_price ?? null;
+
+        await db.query(
+            `INSERT INTO inventory_transactions
+                    (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.params.id, 'purchase', Math.abs(quantity), price, null, null, req.user.id, req.user.id]
+        );
+
+        // if (quantityDelta !== 0) {
+        //     const transactionType = quantityDelta > 0 ? 'purchase' : 'sale';
+        //     await db.query(
+        //         `INSERT INTO inventory_transactions
+        //             (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+        //          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        //         [req.params.id, transactionType, Math.abs(quantityDelta), price, price, null, req.user.id, req.user.id]
+        //     );
+        // } else if (currentPrice !== price) {
+        //     await db.query(
+        //         `INSERT INTO inventory_transactions
+        //             (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+        //          VALUES (?, 'adjustment', 0, ?, ?, ?, ?, ?)`,
+        //         [req.params.id, price, price, null, req.user.id, req.user.id]
+        //     );
+        // }
+
         res.json({ message: 'Item updated' });
     } catch (err) {
         console.error(err);
@@ -101,7 +200,18 @@ app.put('/api/inventory/:id', authorize(['admin']), async (req, res) => {
 
 app.delete('/api/inventory/:id', authorize(['admin']), async (req, res) => {
     try {
-        await db.query('DELETE FROM inventory WHERE id = ?', [req.params.id]);
+        const itemId = req.params.id;
+        const [orderLines] = await db.query('SELECT 1 FROM order_lines WHERE item_id = ? LIMIT 1', [itemId]);
+        if (orderLines.length) {
+            return res.status(400).json({ message: 'Cannot delete item with existing orders' });
+        }
+
+        await db.query('DELETE FROM inventory_transactions WHERE item_id = ?', [itemId]);
+        const [result] = await db.query('DELETE FROM items WHERE id = ?', [itemId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Item not found' });
+        }
+
         res.json({ message: 'Item deleted' });
     } catch (err) {
         console.error(err);
@@ -143,16 +253,54 @@ app.post('/api/order', authorize(['admin', 'captain']), async (req, res) => {
             return res.status(400).json({ message: 'table_id, item_id and quantity are required' });
         }
 
-        // Check stock
-        const [invRows] = await db.query('SELECT quantity FROM inventory WHERE id = ?', [item_id]);
-        if (!invRows.length) return res.status(404).json({ message: 'Item not found' });
-        if (invRows[0].quantity < quantity) {
+        const [itemRows] = await db.query('SELECT * FROM items WHERE id = ?', [item_id]);
+        if (!itemRows.length) return res.status(404).json({ message: 'Item not found' });
+
+        const [[stockRow]] = await db.query(
+            `SELECT COALESCE(SUM(
+                CASE
+                    WHEN transaction_type IN ('purchase', 'return') THEN quantity
+                    WHEN transaction_type = 'sale' THEN -quantity
+                    ELSE quantity
+                END
+            ), 0) AS quantity
+             FROM inventory_transactions
+             WHERE item_id = ?`,
+            [item_id]
+        );
+
+        const currentStock = stockRow.quantity || 0;
+        if (currentStock < quantity) {
             return res.status(400).json({ message: 'Insufficient stock' });
         }
 
-        await db.query('INSERT INTO orders (table_id, item_id, quantity) VALUES (?, ?, ?)', [table_id, item_id, quantity]);
+        const [[priceRow]] = await db.query(
+            'SELECT selling_price FROM inventory_transactions WHERE item_id = ? ORDER BY modified_on DESC LIMIT 1',
+            [item_id]
+        );
+        const price = priceRow?.selling_price ?? 0;
 
-        // Mark table as occupied
+        const [orderResult] = await db.query(
+            `INSERT INTO orders (table_id, user_id, order_time, status, created_by_id, modified_by_id)
+             VALUES (?, ?, NOW(), 'pending', ?, ?)`,
+            [table_id, req.user.id, req.user.id, req.user.id]
+        );
+        const orderId = orderResult.insertId;
+
+        await db.query(
+            `INSERT INTO order_lines
+                (order_id, item_id, quantity, price, created_by_id, modified_by_id)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [orderId, item_id, quantity, price, req.user.id, req.user.id]
+        );
+
+        await db.query(
+            `INSERT INTO inventory_transactions
+                (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+             VALUES (?, 'sale', ?, ?, ?, ?, ?, ?)`,
+            [item_id, quantity, 0, price, null, req.user.id, req.user.id]
+        );
+
         await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
 
         res.json({ message: 'Order placed' });
@@ -177,7 +325,6 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
             return res.status(400).json({ message: 'table_number is required' });
         }
 
-        // Get table
         const [tables] = await conn.query('SELECT * FROM tables WHERE table_number = ?', [table_number]);
         if (!tables.length) {
             await conn.rollback();
@@ -186,66 +333,66 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
         }
         const table = tables[0];
 
-        // Get all pending orders for the table with item details
-        const [orders] = await conn.query(
-            `SELECT o.id, o.item_id, o.quantity, i.item_name, i.price
+        const [orderLines] = await conn.query(
+            `SELECT o.id AS order_id, ol.item_id, ol.quantity, ol.price, i.name AS item_name
              FROM orders o
-             JOIN inventory i ON o.item_id = i.id
+             JOIN order_lines ol ON ol.order_id = o.id
+             JOIN items i ON i.id = ol.item_id
              WHERE o.table_id = ? AND o.status = 'pending'`,
             [table.id]
         );
 
-        if (!orders.length) {
+        if (!orderLines.length) {
             await conn.rollback();
             conn.release();
             return res.status(400).json({ message: 'No pending orders for this table' });
         }
 
-        // Calculate total
-        const total = orders.reduce((sum, o) => sum + (o.quantity * parseFloat(o.price)), 0);
+        const billItems = orderLines.map(line => ({
+            name: line.item_name,
+            qty: line.quantity,
+            price: parseFloat(line.price)
+        }));
+        const total = billItems.reduce((sum, item) => sum + item.qty * item.price, 0);
 
-        // Insert bill record
-        const [billResult] = await conn.query(
-            'INSERT INTO bills (table_id, table_number, total_amount) VALUES (?, ?, ?)',
-            [table.id, table_number, total.toFixed(2)]
-        );
-        const billId = billResult.insertId;
+        const orderIds = [...new Set(orderLines.map(line => line.order_id))];
+        const billIds = [];
 
-        // Insert bill line items and deduct inventory
-        for (const order of orders) {
-            await conn.query(
-                'INSERT INTO bill_items (bill_id, item_name, quantity, price) VALUES (?, ?, ?, ?)',
-                [billId, order.item_name, order.quantity, order.price]
+        for (const orderId of orderIds) {
+            const orderTotal = orderLines
+                .filter(line => line.order_id === orderId)
+                .reduce((sum, line) => sum + line.quantity * parseFloat(line.price), 0);
+
+            const [billResult] = await conn.query(
+                `INSERT INTO bills
+                    (order_id, total_amount, discount, tax, final_amount, payment_status, payment_method, created_by_id, modified_by_id)
+                 VALUES (?, ?, 0, 0, ?, 'unpaid', 'cash', ?, ?)`,
+                [orderId, orderTotal.toFixed(2), orderTotal.toFixed(2), req.user.id, req.user.id]
             );
-            await conn.query(
-                'UPDATE inventory SET quantity = quantity - ? WHERE id = ?',
-                [order.quantity, order.item_id]
-            );
+            billIds.push(billResult.insertId);
         }
 
-        // Mark orders as billed
-        const orderIds = orders.map(o => o.id);
-        await conn.query('UPDATE orders SET status = "billed" WHERE id IN (?)', [orderIds]);
-
-        // Free the table
+        await conn.query(
+            `UPDATE orders SET status = 'served', modified_by_id = ? WHERE id IN (?)`,
+            [req.user.id, orderIds]
+        );
         await conn.query('UPDATE tables SET status = "available" WHERE id = ?', [table.id]);
 
         await conn.commit();
         conn.release();
 
-        // Build response matching frontend Bill interface
-        const bill = {
-            id: billId,
-            table_number: parseInt(table_number),
-            items: orders.map(o => ({
-                name: o.item_name,
-                qty: o.quantity,
-                price: parseFloat(o.price)
-            })),
-            total: parseFloat(total.toFixed(2))
-        };
-
-        res.json(bill);
+        res.json({
+            id: billIds[0],
+            table_number: parseInt(table_number, 10),
+            items: billItems,
+            total: parseFloat(total.toFixed(2)),
+            final_amount: parseFloat(total.toFixed(2)),
+            discount: 0,
+            tax: 0,
+            payment_status: 'unpaid',
+            payment_method: 'cash',
+            bill_ids: billIds
+        });
     } catch (err) {
         await conn.rollback();
         conn.release();
@@ -258,30 +405,23 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
 
 app.get('/api/statistics', authorize(['admin']), async (req, res) => {
     try {
-        // Daily collection: sum of bills created today
         const [[dailyRow]] = await db.query(
-            `SELECT COALESCE(SUM(total_amount), 0) AS total
+            `SELECT COALESCE(SUM(final_amount), 0) AS total
              FROM bills
-             WHERE DATE(created_at) = CURDATE()`
+             WHERE DATE(created_on) = CURDATE()`
         );
 
-        // Monthly collection: sum of bills this calendar month
         const [[monthlyRow]] = await db.query(
-            `SELECT COALESCE(SUM(total_amount), 0) AS total
+            `SELECT COALESCE(SUM(final_amount), 0) AS total
              FROM bills
-             WHERE MONTH(created_at) = MONTH(CURDATE())
-               AND YEAR(created_at) = YEAR(CURDATE())`
-        );
-
-        // Total expenses
-        const [[expensesRow]] = await db.query(
-            'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses'
+             WHERE MONTH(created_on) = MONTH(CURDATE())
+               AND YEAR(created_on) = YEAR(CURDATE())`
         );
 
         res.json({
             daily: parseFloat(dailyRow.total),
             monthly: parseFloat(monthlyRow.total),
-            expenses: parseFloat(expensesRow.total)
+            expenses: 0
         });
     } catch (err) {
         console.error(err);

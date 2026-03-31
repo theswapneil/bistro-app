@@ -2,17 +2,17 @@
 <form [formGroup]="form" (ngSubmit)="save()">
     <mat-dialog-content>
         @if(data?.isDelete) {
-        <p>Are you sure you want to delete <strong>{{ data.item?.item_name }}</strong> from the Inventory?</p>
+        <p>Are you sure you want to delete <strong>{{ data.item?.name }}</strong> from the Inventory?</p>
         }
         @else {
-        <mat-form-field class="full-width">
+        <mat-form-field style="width: 100%" class="full-width">
             <mat-label>Item Name</mat-label>
-            <input matInput formControlName="item_name" required [matAutocomplete]="auto" />
-            <mat-autocomplete #auto="matAutocomplete" (optionSelected)="onOptionSelected($event)">
-                <mat-option *ngFor="let option of filteredOptions | async" [value]="option">
-                    {{option.item_name}}
-                </mat-option>
-            </mat-autocomplete>
+            <input matInput formControlName="name" required />
+            <mat-error *ngIf="form.get('name')?.touched && form.get('name')?.hasError('required')">
+                Name is required
+            </mat-error>
+            <mat-error *ngIf="form.get('name')?.touched && form.get('name')?.hasError('nameExists')">This name is
+                already present in inventory</mat-error>
         </mat-form-field>
         <mat-form-field class="full-width">
             <mat-label>Quantity</mat-label>
@@ -27,7 +27,7 @@
     <mat-dialog-actions align="end">
         <button mat-button type="button" (click)="cancel()">Cancel</button>
         <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid">
-            {{ data?.isDelete ? 'Delete' : (data?.item ? 'Update' : 'Add') }}
+            {{ data?.isDelete ? 'Delete' : (data?.item ? 'Add Stock' : 'Add') }}
         </button>
     </mat-dialog-actions>
 </form>

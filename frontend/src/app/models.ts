@@ -10,7 +10,7 @@ export interface ApiLoginResponse {
 
 export interface InventoryItem {
     id: number;
-    item_name: string;
+    name: string;
     quantity: number;
     price: number;
 }
@@ -32,6 +32,12 @@ export interface Bill {
     table_number: number;
     items: BillItem[];
     total: number;
+    discount?: number;
+    tax?: number;
+    final_amount?: number;
+    payment_status?: 'unpaid' | 'paid' | 'partial';
+    payment_method?: 'cash' | 'card' | 'upi' | 'wallet';
+    bill_ids?: number[];
 }
 
 export interface Stats {
