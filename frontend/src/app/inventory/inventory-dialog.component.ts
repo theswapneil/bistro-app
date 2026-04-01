@@ -34,7 +34,7 @@ export class InventoryDialogComponent {
     ) {
         this.form = this.fb.group({
             id: [data?.item?.id ?? null],
-            name: [data?.item?.name ?? '', [Validators.required, nameExistsValidator(data.list)]],
+            name: [data?.item?.name ?? '', [Validators.required, nameExistsValidator(data?.list)]],
             quantity: [0, [Validators.required, Validators.min(1)]],
             price: [data?.item?.price ?? 0, [Validators.required, Validators.min(1)]],
         });
@@ -42,6 +42,10 @@ export class InventoryDialogComponent {
             this.form.get('name')?.clearValidators();
             this.form.get('price')?.disable();
             this.form.get('name').addValidators([Validators.required, nameExistsValidator(data.list, data?.item?.name)]);
+        }
+        if (data?.isDelete) {
+            this.form.get('name')?.disable()
+            this.form.get('quantity')?.disable()
         }
     }
 
