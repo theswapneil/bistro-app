@@ -5,6 +5,8 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+const profitMargin = 1.25;
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -77,9 +79,13 @@ app.get('/api/inventory', authorize(['admin']), async (req, res) => {
                     END
                 ), 0) AS quantity,
                 COALESCE(
-                    (SELECT it2.buying_price FROM inventory_transactions it2 WHERE it2.item_id = i.id ORDER BY it2.modified_on DESC LIMIT 1),
+                    (SELECT it2.selling_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.selling_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
                     0
-                ) AS price
+                ) AS selling_price,
+                COALESCE(
+                    (SELECT it2.buying_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.buying_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
+                    0
+                ) AS buying_price
             FROM items i
             LEFT JOIN inventory_transactions it ON it.item_id = i.id
             GROUP BY i.id, i.name
@@ -94,9 +100,12 @@ app.get('/api/inventory', authorize(['admin']), async (req, res) => {
 
 app.post('/api/inventory', authorize(['admin']), async (req, res) => {
     try {
-        const { name, quantity, price } = req.body;
-        if (!name || quantity == null || price == null) {
+        const { name, quantity, buying_price, selling_price } = req.body;
+        if (!name || quantity == null || buying_price == null) {
             return res.status(400).json({ message: 'name, quantity and price are required' });
+        }
+        if (selling_price == null) {
+            selling_price = buying_price * profitMargin;
         }
 
         const [existingItems] = await db.query('SELECT id FROM items WHERE name = ?', [name]);
@@ -118,11 +127,11 @@ app.post('/api/inventory', authorize(['admin']), async (req, res) => {
                 `INSERT INTO inventory_transactions
                     (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [itemId, transactionType, Math.abs(quantity), price, price, null, req.user.id, req.user.id]
+                [itemId, transactionType, Math.abs(quantity), buying_price, selling_price, null, req.user.id, req.user.id]
             );
         }
 
-        res.json({ id: itemId, name, quantity, price });
+        res.json({ id: itemId, name, quantity, buying_price, selling_price });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -131,9 +140,9 @@ app.post('/api/inventory', authorize(['admin']), async (req, res) => {
 
 app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
     try {
-        const { name, quantity, price } = req.body;
-        if (!name || quantity == null || price == null) {
-            return res.status(400).json({ message: 'name, quantity and price are required' });
+        const { name, quantity, buying_price, selling_price } = req.body;
+        if (!name || quantity == null || buying_price == null) {
+            return res.status(400).json({ message: 'name, quantity and buying_price are required' });
         }
 
         const [items] = await db.query('SELECT * FROM items WHERE id = ?', [req.params.id]);
@@ -143,6 +152,10 @@ app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
 
         if (items[0].name !== name) {
             await db.query('UPDATE items SET name = ?, modified_by_id = ? WHERE id = ?', [name, req.user.id, req.params.id]);
+        }
+
+        if (selling_price == null) {
+            selling_price = buying_price * profitMargin;
         }
 
         // const [[stockRow]] = await db.query(
@@ -161,17 +174,21 @@ app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
         // const currentQuantity = stockRow.quantity || 0;
         // const quantityDelta = quantity - currentQuantity;
 
-        const [[priceRow]] = await db.query(
-            'SELECT selling_price FROM inventory_transactions WHERE item_id = ? ORDER BY modified_on DESC LIMIT 1',
-            [req.params.id]
-        );
-        const currentPrice = priceRow?.selling_price ?? null;
+
+        //************* Below code decides selling pricebased on previous transaction *************
+        // const [[priceRow]] = await db.query(
+        //     'SELECT buying_price, selling_price FROM inventory_transactions WHERE item_id = ? AND (buying_price>0 OR selling_price>0) ORDER BY modified_on DESC LIMIT 1',
+        //     [req.params.id]
+        // );
+        // const selling_price = priceRow?.selling_price ?? priceRow?.buying_price * profitMargin ?? 0;
+
+        //************* Below code decides selling pricebased on previous transaction *************
 
         await db.query(
             `INSERT INTO inventory_transactions
                     (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.params.id, 'purchase', Math.abs(quantity), price, null, null, req.user.id, req.user.id]
+            [req.params.id, 'purchase', Math.abs(quantity), buying_price, selling_price, null, req.user.id, req.user.id]
         );
 
         // if (quantityDelta !== 0) {
@@ -245,7 +262,7 @@ app.get('/api/table-dashboard', authorize(['admin', 'captain']), async (req, res
 
 // ── Orders ───────────────────────────────────────────────────────────────────
 
-// Place an order (captain)
+// Place an order (admin, captain)
 app.post('/api/order', authorize(['admin', 'captain']), async (req, res) => {
     try {
         const { table_id, item_id, quantity } = req.body;
@@ -304,6 +321,65 @@ app.post('/api/order', authorize(['admin', 'captain']), async (req, res) => {
         await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
 
         res.json({ message: 'Order placed' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Update an order status (admin, captain)
+app.post('/api/update_item_status', authorize(['admin', 'captain']), async (req, res) => {
+    try {
+        const { order_line_id, status } = req.body;
+        if (!order_line_id || !status) {
+            return res.status(400).json({ message: 'order_line_id, and status are required' });
+        }
+        // const [orderResult] = await db.query(
+        //     `INSERT INTO orders (table_id, user_id, order_time, status, created_by_id, modified_by_id)
+        //      VALUES (?, ?, NOW(), 'pending', ?, ?)`,
+        //     [table_id, req.user.id, req.user.id, req.user.id]
+        // );
+        // const orderId = orderResult.insertId;
+
+        await db.query(
+            `UPDATE order_lines SET status = ?, modified_by_id = ? WHERE id = ?`,
+            [status, req.user.id, order_line_id]
+            // `INSERT INTO order_lines
+            //     (order_id, item_id, quantity, price, created_by_id, modified_by_id)
+            //  VALUES (?, ?, ?, ?, ?, ?)`,
+            // [orderId, item_id, quantity, price, req.user.id, req.user.id]
+        );
+
+        // await db.query(
+        //     `INSERT INTO inventory_transactions
+        //         (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+        //      VALUES (?, 'sale', ?, ?, ?, ?, ?, ?)`,
+        //     [item_id, quantity, 0, price, null, req.user.id, req.user.id]
+        // );
+
+        // await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
+
+        res.json({ message: 'Order Status Updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get orders for a table (pending or served)
+app.get('/api/table/:tableId/orders', authorize(['admin', 'captain']), async (req, res) => {
+    try {
+        const { tableId } = req.params;
+        const [orders] = await db.query(
+            `SELECT o.id, ol.id AS order_line_id, ol.status, ol.item_id, i.name, ol.quantity, ol.amount
+             FROM orders o
+             JOIN order_lines ol ON ol.order_id = o.id
+             JOIN items i ON i.id = ol.item_id
+             WHERE o.table_id = ? AND o.status = 'pending' AND ol.status IN ('pending','preparing','served')
+             ORDER BY o.order_time DESC`,
+            [tableId]
+        );
+        res.json(orders);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

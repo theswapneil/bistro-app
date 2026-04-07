@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS order_lines (
     order_id INT NOT NULL,
     item_id INT NOT NULL,
     quantity INT NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    status ENUM('pending','preparing','served') DEFAULT 'pending',
     created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
     modified_on DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_by_id INT,
@@ -120,7 +121,7 @@ INSERT INTO orders (id, table_id, user_id, order_time, status, created_on, modif
 SELECT id, table_id, NULL, NOW(), status, NOW(), NOW(), NULL, NULL
 FROM orders_backup;
 
-INSERT INTO order_lines (order_id, item_id, quantity, price, created_by_id, modified_by_id)
+INSERT INTO order_lines (order_id, item_id, quantity, amount, created_by_id, modified_by_id)
 SELECT o.id, o.item_id, o.quantity,
        COALESCE((SELECT selling_price FROM inventory_transactions it WHERE it.item_id = o.item_id ORDER BY modified_on DESC LIMIT 1), 0),
        NULL, NULL

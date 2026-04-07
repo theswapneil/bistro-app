@@ -42,3 +42,39 @@
 .full-width {
     width: 100%;
 }
+
+.content-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    width: 100%;
+    max-width: 1200px;
+}
+
+.form-card {
+    padding: 1.5rem;
+}
+
+.orders-card {
+    padding: 1.5rem;
+}
+
+.orders-table {
+    width: 100%;
+}
+
+.status-pending {
+    color: #ff9800;
+    font-weight: bold;
+}
+
+.status-served {
+    color: #4caf50;
+    font-weight: bold;
+}
+
+.no-orders {
+    color: #999;
+    text-align: center;
+    padding: 1rem;
+}

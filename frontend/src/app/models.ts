@@ -9,6 +9,8 @@ export interface ApiLoginResponse {
 }
 
 export interface InventoryItem {
+    buying_price: number;
+    selling_price: number;
     id: number;
     name: string;
     quantity: number;
@@ -54,4 +56,14 @@ export interface PlaceOrderRequest {
 
 export interface GenerateBillRequest {
     table_number: string;
+}
+
+export interface OrderLine {
+    id?: number;
+    order_id?: number;
+    item_id: number;
+    name: string;
+    quantity: number;
+    price: number;
+    status: 'pending' | 'served';
 }

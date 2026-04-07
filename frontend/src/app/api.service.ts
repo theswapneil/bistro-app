@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { catchError, Observable, throwError, tap } from 'rxjs';
-import { ApiLoginResponse, InventoryItem, LoginCredentials, Table, Bill, Stats, PlaceOrderRequest, GenerateBillRequest } from './models';
+import { ApiLoginResponse, InventoryItem, LoginCredentials, Table, Bill, Stats, PlaceOrderRequest, GenerateBillRequest, OrderLine } from './models';
 
 @Injectable({
     providedIn: 'root'
@@ -79,6 +79,18 @@ export class ApiService {
 
     placeOrder(order: PlaceOrderRequest) {
         return this.http.post(`${this.baseUrl}/order`, order, this.getAuthHeaders()).pipe(
+            catchError(err => this.handleError(err))
+        );
+    }
+
+    updateItemStatus(order_line_id: string | number, status: string) {
+        return this.http.post(`${this.baseUrl}/update_item_status`, { order_line_id, status }, this.getAuthHeaders()).pipe(
+            catchError(err => this.handleError(err))
+        );
+    }
+
+    getTableOrders(tableId: number) {
+        return this.http.get<OrderLine[]>(`${this.baseUrl}/table/${tableId}/orders`, this.getAuthHeaders()).pipe(
             catchError(err => this.handleError(err))
         );
     }

@@ -36,11 +36,13 @@ export class InventoryDialogComponent {
             id: [data?.item?.id ?? null],
             name: [data?.item?.name ?? '', [Validators.required, nameExistsValidator(data?.list)]],
             quantity: [0, [Validators.required, Validators.min(1)]],
-            price: [data?.item?.price ?? 0, [Validators.required, Validators.min(1)]],
+            buying_price: [data?.item?.buying_price ?? 0, [Validators.required, Validators.min(1)]],
+            selling_price: [data?.item?.selling_price ?? 0, [Validators.required, Validators.min(1)]],
         });
         if (data?.item?.id) {
             this.form.get('name')?.clearValidators();
-            this.form.get('price')?.disable();
+            this.form.get('buying_price')?.disable();
+            this.form.get('selling_price')?.disable();
             this.form.get('name').addValidators([Validators.required, nameExistsValidator(data.list, data?.item?.name)]);
         }
         if (data?.isDelete) {
