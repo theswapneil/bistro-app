@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const profitMargin = 1.25;
-
+const tax_rate = (18 / 100) // 18% GST/VAT on sale
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -67,29 +67,38 @@ function authorize(roles = []) {
 
 app.get('/api/inventory', authorize(['admin']), async (req, res) => {
     try {
+        // const [rows] = await db.query(
+        //     `SELECT
+        //         i.id,
+        //         i.name,
+        //         COALESCE(SUM(
+        //             CASE
+        //                 WHEN it.transaction_type IN ('purchase', 'return') THEN it.quantity
+        //                 WHEN it.transaction_type = 'sale' THEN -it.quantity
+        //                 ELSE it.quantity
+        //             END
+        //         ), 0) AS quantity,
+        //         COALESCE(
+        //             (SELECT it2.selling_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.selling_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
+        //             0
+        //         ) AS selling_price,
+        //         COALESCE(
+        //             (SELECT it2.buying_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.buying_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
+        //             0
+        //         ) AS buying_price
+        //     FROM items i
+        //     LEFT JOIN inventory_transactions it ON it.item_id = i.id
+        //     GROUP BY i.id, i.name
+        //     ORDER BY i.name`
+        // );
         const [rows] = await db.query(
             `SELECT
                 i.id,
                 i.name,
-                COALESCE(SUM(
-                    CASE
-                        WHEN it.transaction_type IN ('purchase', 'return') THEN it.quantity
-                        WHEN it.transaction_type = 'sale' THEN -it.quantity
-                        ELSE it.quantity
-                    END
-                ), 0) AS quantity,
-                COALESCE(
-                    (SELECT it2.selling_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.selling_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
-                    0
-                ) AS selling_price,
-                COALESCE(
-                    (SELECT it2.buying_price FROM inventory_transactions it2 WHERE it2.item_id = i.id AND it2.buying_price>0 ORDER BY it2.modified_on DESC LIMIT 1),
-                    0
-                ) AS buying_price
-            FROM items i
-            LEFT JOIN inventory_transactions it ON it.item_id = i.id
-            GROUP BY i.id, i.name
-            ORDER BY i.name`
+                i.quantity,
+                i.selling_price,
+                i.buying_price
+            FROM items i`
         );
         res.json(rows);
     } catch (err) {
@@ -111,15 +120,37 @@ app.post('/api/inventory', authorize(['admin']), async (req, res) => {
         const [existingItems] = await db.query('SELECT id FROM items WHERE name = ?', [name]);
         let itemId;
 
-        if (existingItems.length) {
-            itemId = existingItems[0].id;
-        } else {
-            const [result] = await db.query(
-                'INSERT INTO items (name, created_by_id, modified_by_id) VALUES (?, ?, ?)',
-                [name, req.user.id, req.user.id]
-            );
-            itemId = result.insertId;
-        }
+
+        // if (existingItems.length) {
+        //     itemId = existingItems[0].id;
+        // } else {
+        const [result] = await db.query(
+            'INSERT INTO items (name, quantity, buying_price, selling_price, created_by_id, modified_by_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, quantity, buying_price, selling_price, req.user.id, req.user.id]
+        );
+        console.log('Inserted item with ID:', result);
+        itemId = result.insertId;
+        // }
+
+        // Adding stock to existing id
+        // const [item_row] = await db.query(
+        //     `SELECT
+        //         i.id,
+        //         i.name,
+        //         COALESCE(SUM(
+        //             CASE
+        //                 WHEN it.transaction_type IN ('purchase', 'return') THEN it.quantity
+        //                 WHEN it.transaction_type = 'sale' THEN -it.quantity
+        //                 ELSE it.quantity
+        //             END
+        //         ), 0) AS quantity
+        //     FROM items i
+        //     LEFT JOIN inventory_transactions it ON it.item_id = i.id
+        //     WHERE i.id = ?
+        //     GROUP BY i.id, i.name
+        //     ORDER BY i.name`,
+        //     [itemId]
+        // );
 
         if (quantity !== 0) {
             const transactionType = quantity > 0 ? 'purchase' : 'sale';
@@ -129,9 +160,13 @@ app.post('/api/inventory', authorize(['admin']), async (req, res) => {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [itemId, transactionType, Math.abs(quantity), buying_price, selling_price, null, req.user.id, req.user.id]
             );
+            // await db.query(`Update items SET quantity = ? WHERE id = ?`, [item_quantity.quantity, item_quantity.id])
+            res.json({ id: itemId, name, quantity, buying_price, selling_price });
+        }
+        else {
+            res.status(500).json({ message: 'Quantity cannot be 0' });
         }
 
-        res.json({ id: itemId, name, quantity, buying_price, selling_price });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -150,13 +185,14 @@ app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
             return res.status(404).json({ message: 'Item not found' });
         }
 
-        if (items[0].name !== name) {
-            await db.query('UPDATE items SET name = ?, modified_by_id = ? WHERE id = ?', [name, req.user.id, req.params.id]);
-        }
+        console.log('Existing item:', items[0], quantity);
+
 
         if (selling_price == null) {
             selling_price = buying_price * profitMargin;
         }
+
+        await db.query('UPDATE items SET name = ?, quantity = ?, buying_price = ?, selling_price = ?, modified_by_id = ? WHERE id = ?', [name, Number(items[0].quantity) + Number(quantity), buying_price, selling_price, req.user.id, req.params.id]);
 
         // const [[stockRow]] = await db.query(
         //     `SELECT COALESCE(SUM(
@@ -186,9 +222,9 @@ app.put('/api/add-stock/:id', authorize(['admin']), async (req, res) => {
 
         await db.query(
             `INSERT INTO inventory_transactions
-                    (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.params.id, 'purchase', Math.abs(quantity), buying_price, selling_price, null, req.user.id, req.user.id]
+                    (item_id, transaction_type, quantity, supplier_id, created_by_id, modified_by_id)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+            [req.params.id, 'purchase', Math.abs(quantity), null, req.user.id, req.user.id]
         );
 
         // if (quantityDelta !== 0) {
@@ -273,52 +309,71 @@ app.post('/api/order', authorize(['admin', 'captain']), async (req, res) => {
         const [itemRows] = await db.query('SELECT * FROM items WHERE id = ?', [item_id]);
         if (!itemRows.length) return res.status(404).json({ message: 'Item not found' });
 
-        const [[stockRow]] = await db.query(
-            `SELECT COALESCE(SUM(
-                CASE
-                    WHEN transaction_type IN ('purchase', 'return') THEN quantity
-                    WHEN transaction_type = 'sale' THEN -quantity
-                    ELSE quantity
-                END
-            ), 0) AS quantity
-             FROM inventory_transactions
-             WHERE item_id = ?`,
-            [item_id]
-        );
+        // const [[stockRow]] = await db.query(
+        //     `SELECT COALESCE(SUM(
+        //         CASE
+        //             WHEN transaction_type IN ('purchase', 'return') THEN quantity
+        //             WHEN transaction_type = 'sale' THEN -quantity
+        //             ELSE quantity
+        //         END
+        //     ), 0) AS quantity
+        //      FROM inventory_transactions
+        //      WHERE item_id = ?`,
+        //     [item_id]
+        // );
 
-        const currentStock = stockRow.quantity || 0;
-        if (currentStock < quantity) {
+        // const currentStock = stockRow.quantity || 0;
+        // if (currentStock < quantity) {
+        console.log('Current stock:', itemRows, 'Requested quantity:', quantity);
+        if (itemRows[0].quantity < quantity) {
             return res.status(400).json({ message: 'Insufficient stock' });
         }
 
-        const [[priceRow]] = await db.query(
-            'SELECT selling_price FROM inventory_transactions WHERE item_id = ? ORDER BY modified_on DESC LIMIT 1',
-            [item_id]
-        );
-        const price = priceRow?.selling_price ?? 0;
+        // const [[priceRow]] = await db.query(
+        //     'SELECT selling_price FROM inventory_transactions WHERE item_id = ? ORDER BY modified_on DESC LIMIT 1',
+        //     [item_id]
+        // );
+        // const price = priceRow?.selling_price ?? 0;
+        let orderId;
 
-        const [orderResult] = await db.query(
-            `INSERT INTO orders (table_id, user_id, order_time, status, created_by_id, modified_by_id)
-             VALUES (?, ?, NOW(), 'pending', ?, ?)`,
-            [table_id, req.user.id, req.user.id, req.user.id]
+        const [existingOrder] = await db.query(
+            `select * from orders WHERE table_id = ? AND status = 'pending'`,
+            [table_id]
         );
-        const orderId = orderResult.insertId;
+
+        console.log('Existing order for table:', existingOrder);
+
+        if (existingOrder.length) {
+            orderId = existingOrder[0].id;
+        }
+        else {
+            const [orderResult] = await db.query(
+                `INSERT INTO orders (table_id, user_id, order_time, status, created_by_id, modified_by_id)
+                VALUES (?, ?, NOW(), 'pending', ?, ?)`,
+                [table_id, req.user.id, req.user.id, req.user.id]
+            );
+            orderId = orderResult.insertId;
+            console.log('New order for table:', orderResult);
+
+        }
 
         await db.query(
             `INSERT INTO order_lines
-                (order_id, item_id, quantity, price, created_by_id, modified_by_id)
+                (order_id, item_id, quantity, amount, created_by_id, modified_by_id)
              VALUES (?, ?, ?, ?, ?, ?)`,
-            [orderId, item_id, quantity, price, req.user.id, req.user.id]
+            [orderId, item_id, quantity, Number(itemRows[0].selling_price) * Number(quantity), req.user.id, req.user.id]
         );
 
         await db.query(
             `INSERT INTO inventory_transactions
-                (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
-             VALUES (?, 'sale', ?, ?, ?, ?, ?, ?)`,
-            [item_id, quantity, 0, price, null, req.user.id, req.user.id]
+                (item_id, transaction_type, quantity, selling_price, supplier_id, created_by_id, modified_by_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [item_id, 'sale', quantity, itemRows[0].selling_price, null, req.user.id, req.user.id]
         );
 
-        await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
+        if (!existingOrder.length) {
+            await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
+        }
 
         res.json({ message: 'Order placed' });
     } catch (err) {
@@ -348,6 +403,33 @@ app.post('/api/update_item_status', authorize(['admin', 'captain']), async (req,
             //     (order_id, item_id, quantity, price, created_by_id, modified_by_id)
             //  VALUES (?, ?, ?, ?, ?, ?)`,
             // [orderId, item_id, quantity, price, req.user.id, req.user.id]
+        );
+
+        // await db.query(
+        //     `INSERT INTO inventory_transactions
+        //         (item_id, transaction_type, quantity, buying_price, selling_price, supplier_id, created_by_id, modified_by_id)
+        //      VALUES (?, 'sale', ?, ?, ?, ?, ?, ?)`,
+        //     [item_id, quantity, 0, price, null, req.user.id, req.user.id]
+        // );
+
+        // await db.query('UPDATE tables SET status = "occupied" WHERE id = ?', [table_id]);
+
+        res.json({ message: 'Order Status Updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+app.post('/api/generate_bill', authorize(['admin', 'captain']), async (req, res) => {
+    try {
+        const { table_id, order_line_id } = req.body;
+        if (!table_id || !order_line_id) {
+            return res.status(400).json({ message: 'order_line_id, and table_id are required' });
+        }
+        await db.query(
+            `UPDATE orders SET status = 'served', modified_by_id = ? WHERE status != 'served' AND table_id = ? AND id IN (?)`,
+            [req.user.id, table_id, [orderIds]]
         );
 
         // await db.query(
@@ -410,13 +492,15 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
         const table = tables[0];
 
         const [orderLines] = await conn.query(
-            `SELECT o.id AS order_id, ol.item_id, ol.quantity, ol.price, i.name AS item_name
+            `SELECT o.id AS order_id, ol.item_id, ol.quantity, ol.amount as final_amount, i.selling_price as rate, i.name AS item_name
              FROM orders o
              JOIN order_lines ol ON ol.order_id = o.id
              JOIN items i ON i.id = ol.item_id
              WHERE o.table_id = ? AND o.status = 'pending'`,
             [table.id]
         );
+
+        console.log('Order lines for billing:', orderLines);
 
         if (!orderLines.length) {
             await conn.rollback();
@@ -426,31 +510,49 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
 
         const billItems = orderLines.map(line => ({
             name: line.item_name,
+            price: parseFloat(line.rate),
             qty: line.quantity,
-            price: parseFloat(line.price)
+            final_amount: parseFloat(line.final_amount)
         }));
-        const total = billItems.reduce((sum, item) => sum + item.qty * item.price, 0);
-
-        const orderIds = [...new Set(orderLines.map(line => line.order_id))];
+        console.log('billItems:', billItems);
+        const total_bill = billItems.reduce((sum, item) => {
+            console.log('sum', sum, 'final_amount', item.final_amount)
+            return sum + Number(item.final_amount)
+        }, 0);
+        console.log('Total bill :', total_bill);
         const billIds = [];
 
-        for (const orderId of orderIds) {
-            const orderTotal = orderLines
-                .filter(line => line.order_id === orderId)
-                .reduce((sum, line) => sum + line.quantity * parseFloat(line.price), 0);
+        const calculated_tax = total_bill * tax_rate;
+        const final_bill_after_tax = total_bill + calculated_tax;
 
-            const [billResult] = await conn.query(
-                `INSERT INTO bills
-                    (order_id, total_amount, discount, tax, final_amount, payment_status, payment_method, created_by_id, modified_by_id)
-                 VALUES (?, ?, 0, 0, ?, 'unpaid', 'cash', ?, ?)`,
-                [orderId, orderTotal.toFixed(2), orderTotal.toFixed(2), req.user.id, req.user.id]
-            );
-            billIds.push(billResult.insertId);
-        }
+        const [billResult] = await conn.query(
+            `INSERT INTO bills
+                (order_id, total_amount, discount, tax, final_amount, payment_status, payment_method, created_by_id, modified_by_id)
+                 VALUES (?, ?, 0, ?, ?, 'unpaid', 'cash', ?, ?)`,
+            [orderLines[0].order_id, total_bill.toFixed(2), calculated_tax.toFixed(2), final_bill_after_tax.toFixed(2), req.user.id, req.user.id]
+        );
+        // billIds.push(billResult.insertId);
+
+
+        // const orderIds = [...new Set(orderLines.map(line => line.order_id))];
+
+        // for (const orderId of orderIds) {
+        //     const orderTotal = orderLines
+        //         .filter(line => line.order_id === orderId)
+        //         .reduce((sum, line) => sum + line.quantity * parseFloat(line.price), 0);
+
+        //     const [billResult] = await conn.query(
+        //         `INSERT INTO bills
+        //             (order_id, total_amount, discount, tax, final_amount, payment_status, payment_method, created_by_id, modified_by_id)
+        //          VALUES (?, ?, 0, 0, ?, 'unpaid', 'cash', ?, ?)`,
+        //         [orderId, orderTotal.toFixed(2), orderTotal.toFixed(2), req.user.id, req.user.id]
+        //     );
+        //     billIds.push(billResult.insertId);
+        // }
 
         await conn.query(
-            `UPDATE orders SET status = 'served', modified_by_id = ? WHERE id IN (?)`,
-            [req.user.id, orderIds]
+            `UPDATE orders SET status = 'served', modified_by_id = ? WHERE id = ?`,
+            [req.user.id, orderLines[0].order_id]
         );
         await conn.query('UPDATE tables SET status = "available" WHERE id = ?', [table.id]);
 
@@ -461,17 +563,48 @@ app.post('/api/bill', authorize(['admin', 'captain']), async (req, res) => {
             id: billIds[0],
             table_number: parseInt(table_number, 10),
             items: billItems,
-            total: parseFloat(total.toFixed(2)),
-            final_amount: parseFloat(total.toFixed(2)),
+            total_bill: parseFloat(total_bill.toFixed(2)),
+            final_amount: parseFloat(final_bill_after_tax.toFixed(2)),
             discount: 0,
-            tax: 0,
+            tax: calculated_tax,
             payment_status: 'unpaid',
             payment_method: 'cash',
-            bill_ids: billIds
+            bill_ids: billResult.insertId
         });
     } catch (err) {
         await conn.rollback();
         conn.release();
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get all bills (admin only)
+app.get('/api/bills', authorize(['admin']), async (req, res) => {
+    try {
+        const [bills] = await db.query(
+            `SELECT b.id, b.order_id, b.total_amount, b.discount, b.tax, b.final_amount, b.payment_status, b.payment_method, b.created_on,
+                    t.table_number, u.username as created_by
+             FROM bills b
+             JOIN orders o ON b.order_id = o.id
+             JOIN tables t ON o.table_id = t.id
+             JOIN users u ON b.created_by_id = u.id
+             ORDER BY b.created_on DESC`
+        );
+
+        res.json(bills.map(bill => ({
+            id: bill.id,
+            table_number: bill.table_number,
+            total_amount: parseFloat(bill.total_amount),
+            discount: parseFloat(bill.discount),
+            tax: parseFloat(bill.tax),
+            final_amount: parseFloat(bill.final_amount),
+            payment_status: bill.payment_status,
+            payment_method: bill.payment_method,
+            created_on: bill.created_on,
+            created_by: bill.created_by
+        })));
+    } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
     }

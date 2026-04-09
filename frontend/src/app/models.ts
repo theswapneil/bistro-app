@@ -32,7 +32,7 @@ export interface BillItem {
 export interface Bill {
     id: number;
     table_number: number;
-    items: BillItem[];
+    items?: BillItem[];
     total: number;
     discount?: number;
     tax?: number;
@@ -40,6 +40,8 @@ export interface Bill {
     payment_status?: 'unpaid' | 'paid' | 'partial';
     payment_method?: 'cash' | 'card' | 'upi' | 'wallet';
     bill_ids?: number[];
+    created_on?: string;
+    created_by?: string;
 }
 
 export interface Stats {

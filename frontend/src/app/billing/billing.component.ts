@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -16,7 +16,7 @@ import { Bill, GenerateBillRequest } from '../models';
 })
 export class BillingComponent implements OnInit {
     billForm: FormGroup;
-    bill: Bill | null = null;
+    bill = signal<Bill | null>(null);
     error = '';
     constructor(private api: ApiService, private fb: FormBuilder) {
         this.billForm = this.fb.group({
@@ -27,7 +27,7 @@ export class BillingComponent implements OnInit {
     generateBill() {
         this.error = '';
         this.api.generateBill(this.billForm.value).subscribe({
-            next: bill => this.bill = bill,
+            next: bill => this.bill.set(bill),
             error: err => this.error = err.message || 'Failed to generate bill'
         });
     }

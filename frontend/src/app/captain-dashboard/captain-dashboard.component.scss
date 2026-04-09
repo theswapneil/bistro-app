@@ -78,3 +78,23 @@
     text-align: center;
     padding: 1rem;
 }
+
+
+.header-container {
+    display: flex;
+    align-items: center;
+    /* Vertically centers the button with the text */
+    gap: 10px;
+    /* Adds space between the h2 and the button */
+    margin-bottom: 15px;
+}
+
+h3 {
+    margin: 0;
+    /* Removes default spacing that might cause misalignment */
+}
+
+.right-btn {
+    margin-left: auto;
+    /* Pushes ONLY this element to the far right */
+}

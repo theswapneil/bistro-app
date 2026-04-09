@@ -24,7 +24,7 @@ export interface InventoryDialogData {
 })
 export class InventoryDialogComponent {
     form: FormGroup;
-    title = this.data?.isDelete ? 'Delete Inventory Item' : (this.data?.item ? 'Add Stock' : 'Add Inventory Item');
+    title = this.data?.isDelete ? 'Delete Inventory Item' : (this.data?.item ? 'Add Stock' : 'Add New Item to Inventory');
     filteredOptions!: Observable<InventoryItem[]>;
 
     constructor(
@@ -39,6 +39,12 @@ export class InventoryDialogComponent {
             buying_price: [data?.item?.buying_price ?? 0, [Validators.required, Validators.min(1)]],
             selling_price: [data?.item?.selling_price ?? 0, [Validators.required, Validators.min(1)]],
         });
+
+        this.filteredOptions = this.form.controls.name.valueChanges.pipe(
+            // startWith(''), // Ensure suggestions show on initial click
+            map(value => this._filter(value || '')),
+        );
+
         if (data?.item?.id) {
             this.form.get('name')?.clearValidators();
             this.form.get('buying_price')?.disable();
@@ -49,6 +55,13 @@ export class InventoryDialogComponent {
             this.form.get('name')?.disable()
             this.form.get('quantity')?.disable()
         }
+    }
+
+    private _filter(value: string): InventoryItem[] {
+        const filterValue = value.toLowerCase();
+        return this.data?.list.filter(option =>
+            option.name.toLowerCase().includes(filterValue)
+        );
     }
 
     save() {

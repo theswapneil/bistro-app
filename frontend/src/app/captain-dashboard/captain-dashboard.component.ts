@@ -85,6 +85,23 @@ export class CaptainDashboardComponent implements OnInit {
         });
     }
 
+    generateBill(selectedTable: Table) {
+        const orderIds: number[] = this.tableOrders().map(order => order.id);
+        console.log('selectedTable', selectedTable, orderIds);
+
+        // this.api.updateItemStatus(row.order_line_id, newValue).subscribe({
+        //     next: (response) => {
+        //         // Update local data to reflect change without reloading the whole table
+        //         row.status = newValue;
+        //         console.log('Update successful', response);
+        //     },
+        //     error: (err) => {
+        //         // Revert the value or show an error message if the API fails
+        //         console.error('Update failed', err);
+        //     }
+        // });
+    }
+
     placeOrder() {
         if (this.selectedTable && this.orderForm.valid) {
             this.error = '';

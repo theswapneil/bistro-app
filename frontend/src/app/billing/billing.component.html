@@ -10,11 +10,16 @@
             <button mat-raised-button color="primary" type="submit">Generate</button>
         </form>
     </mat-card>
-    <mat-card *ngIf="bill">
-        <h3>Bill for Table {{ bill.table_number }}</h3>
-        <div *ngFor="let item of bill.items">
-            {{ item.name }} x{{ item.qty }} - {{ item.price | currency }}
+    @if(bill(); as b) {
+    <mat-card>
+        <h3>Bill for Table {{ b.table_number }}</h3>
+        <div *ngFor="let item of b.items">
+            {{ item.name }} x{{ item.qty }} - {{ item.price | currency:'INR' }}
         </div>
-        <div class="total">Total: {{ bill.total | currency }}</div>
+        <div>
+            TAX: - {{ b.tax | currency:'INR' }}
+        </div>
+        <div class="total">Total: {{ b.final_amount | currency:'INR' }}</div>
     </mat-card>
+    }
 </div>

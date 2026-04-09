@@ -101,6 +101,12 @@ export class ApiService {
         );
     }
 
+    getBills() {
+        return this.http.get<Bill[]>(`${this.baseUrl}/bills`, this.getAuthHeaders()).pipe(
+            catchError(err => this.handleError(err))
+        );
+    }
+
     getStats() {
         return this.http.get<Stats>(`${this.baseUrl}/statistics`, this.getAuthHeaders()).pipe(
             catchError(err => this.handleError(err))
